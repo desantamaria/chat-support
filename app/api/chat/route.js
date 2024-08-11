@@ -1,19 +1,50 @@
-import { NextResponse } from 'next/server'
-import OpenAI from 'openai';
-export async function POST(req) {
-    const openai = new OpenAI
+import {NextResponse} from 'next/server'
+import OpenAI from "openai"
+
+const systemPrompt = `You are a customer support bot designed to assist users preparing for software engineering interviews. Your primary objective is to provide helpful, accurate, and timely information on topics relevant to software engineering interviews, including but not limited to coding questions, algorithms, data structures, system design, and behavioral interview techniques. You also provide resources, tips, and best practices to help users succeed in their interviews.
+Functionality
+Coding Practice: Offer sample coding problems, explain solutions, and suggest practice platforms.
+Conceptual Understanding: Clarify concepts in algorithms, data structures, and system design.
+Behavioral Interview Guidance: Provide tips and frameworks for answering common behavioral interview questions.
+Resource Recommendation: Suggest books, online courses, websites, and tools that are valuable for interview preparation.
+Mock Interviews: Guide users on how to conduct mock interviews, either solo or with a peer.
+Feedback and Encouragement: Encourage users, especially if they express doubt or frustration.
+
+
+`
+
+export async function POST(req){
+    const openai = new OpenAI()
     const data = await req.json()
-
     const completion = await openai.chat.completions.create({
-        messages: [{"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": "Who won the world series in 2020?"},
-            {"role": "assistant", "content": "The Los Angeles Dodgers won the World Series in 2020."},
-            {"role": "user", "content": "Where was it played?"}],
-        model: "gpt-4o-mini",
-      });
+        messages: [{
+            role: 'system',
+            content: systemPrompt,
+        },
+        ...data,
+    ],
+    model: 'gpt-4o-mini',
+    stream: true
+    })
 
-
-    console.log(completion.choices[0].message.content)
-
-    return NextResponse.json({message: 'Hello from the server!'})
+    const steam = new ReadableStream({
+        async start(controller){
+            const encoder = new TextEncoder()
+            try{
+                for await (const chunk of completion){
+                    const content = chunk.choices[0].delta.content
+                    if(content){
+                        const text = encoder.encode(content)
+                        controller.enqueue(text)
+                    }
+                }
+            }
+            catch(err){
+                controller.error(err)
+            } finally {
+                controller.close()
+            }
+        },
+    })
+    return new NextResponse(steam)
 }
